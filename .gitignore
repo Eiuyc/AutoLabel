@@ -4,10 +4,10 @@ __pycache__/
 *$py.class
 
 
-./videos
-./images
-./labels
-./weights/others
+videos
+images
+labels
+weights/others
 
 # C extensions
 *.so

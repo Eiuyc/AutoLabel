@@ -3,28 +3,18 @@ from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QComboBox
 from PyQt5.QtWidgets import QFileDialog, QLabel, QTextBrowser, QRadioButton
 from PyQt5.QtGui import QPainter, QPen, QColor, QFont, QIcon
 from PyQt5.QtGui import QTextCursor, QPixmap
-from PyQt5.QtCore import QRect, Qt, QThread, pyqtSignal
-from detector import App
+from PyQt5.QtCore import QRect, Qt
+
 import base64
 from pathlib import Path
-
-class Tool_Opt():
-    def __init__(self):
-        self.IMGSIZE = (int(1920 *0.7), int(1080 *0.7))
-        self.IMG_DIR = './images'
-        self.LABEL_DIR = './labels'
-        self.VIDEO_DIR = './videos'
-        for dirName in [self.IMG_DIR, self.LABEL_DIR, self.VIDEO_DIR]:
-            Path(dirName).mkdir(exist_ok=True)
-        self.IMG_LIST = []
-        self.CUR_INDEX = 0
-        self.CN = 4
-        self.l_pic_bgc = (200, 200, 200)
-        self.l_console_bgc = (180, 180, 180)
+from Modules import Tool_Opt, CvtProcess, AutoProcess
 
 class Utils():
-    def cxyxy2cxywh(cxyxy, size=None):
-        if not size: size = opt.IMGSIZE
+    def __init__(self, IMGSIZE):
+        self.size = IMGSIZE
+
+    def cxyxy2cxywh(self, cxyxy, size=None):
+        if not size: size = self.size
         c = cxyxy[0]
         w = cxyxy[3] - cxyxy[1]
         h = cxyxy[4] - cxyxy[2]
@@ -33,8 +23,8 @@ class Utils():
         cxywh = [c, x/size[0], y/size[1], w/size[0], h/size[1]]
         return cxywh
 
-    def cxywh2cxyxy(cxywh, size=None):
-        if not size: size = opt.IMGSIZE
+    def cxywh2cxyxy(self, cxywh, size=None):
+        if not size: size = self.size
         c, x, y, w, h = cxywh
         x *= size[0]; w *= size[0]
         y *= size[1]; h *= size[1]
@@ -44,36 +34,6 @@ class Utils():
         y1 = y + h/2
         cxyxy = [c, x0, y0, x1, y1]
         return cxyxy
-
-class MyProcess(QThread):
-    signal = pyqtSignal(str)
-    def __init__(self, vpath, img_save_dir, lb_save_dir, filename, total):
-        super().__init__()
-        self.vpath = vpath
-        self.img_save_dir = img_save_dir
-        self.lb_save_dir = lb_save_dir
-        self.filename = filename
-        self.total = total
-        self.detector = App()
-
-    def __del__(self):
-        self.wait()
-
-    def run(self):
-        self.cap = cv2.VideoCapture(self.vpath)
-        cnt = 0
-        while 1:
-            _, frame = self.cap.read()
-            if not _: break
-            cnt += 1
-            # if cnt % 250: continue
-            if cnt % 25: continue
-            self.signal.emit(f'processing: {cnt}/{self.total}')
-            imgpath = f'{self.img_save_dir}/{self.filename}_{cnt:05}.jpg'
-            lbpath = f'{self.lb_save_dir}/{self.filename}_{cnt:05}.txt'
-            pred = self.detector.detect_img(frame, lbpath)
-            cv2.imwrite(imgpath, frame)
-        self.signal.emit(f'Done. Images saved at {self.img_save_dir}')
 
 class MyLabel(QLabel):
     def __init__(self, p, window):
@@ -130,7 +90,6 @@ class MyLabel(QLabel):
     def get_rect_color(self, c):
         return self.colors[int(c)]
 
-
     def paintEvent(self, evt):
         super().paintEvent(evt)
         if not self.window.view_state: return
@@ -151,76 +110,84 @@ class MyLabel(QLabel):
 class Eiuyc_Label_Tool(QWidget):
     def __init__(self):
         super().__init__()
+        self.opt = Tool_Opt()
+        self.utils = Utils(self.opt.IMGSIZE)
         self.view_state = True
         self.l_pic = MyLabel(self, self)
-        self.l_pic.setGeometry(0, 0, *opt.IMGSIZE)
-        self.l_pic.setStyleSheet(f'background-color: rgb{opt.l_pic_bgc}')
+        self.l_pic.setGeometry(0, 0, *self.opt.IMGSIZE)
+        self.l_pic.setStyleSheet(f'background-color: rgb{self.opt.l_pic_bgc}')
 
         self.l_console = QTextBrowser(self)
-        self.l_console.setGeometry(opt.IMGSIZE[0], 0, 500, opt.IMGSIZE[1] + 100)
+        self.l_console.setGeometry(self.opt.IMGSIZE[0], 0, 500, self.opt.IMGSIZE[1] + 100)
         self.l_console.setText('Label tool for yolov5.\n\n=======')
-        self.l_console.setStyleSheet(f'background-color: rgb{opt.l_console_bgc}')
+        self.l_console.setStyleSheet(f'background-color: rgb{self.opt.l_console_bgc}')
         self.l_console.setAlignment(Qt.AlignLeft|Qt.AlignTop)
 
         btn_vcvt = QPushButton(self)
         btn_vcvt.setText('vcvt')
-        btn_vcvt.move(30,opt.IMGSIZE[1]+60)
+        btn_vcvt.move(30,self.opt.IMGSIZE[1]+60)
         btn_vcvt.clicked.connect(self.func_vcvt)
         btn_vcvt.setToolTip('Convert a video file to a image sequence')
 
+        btn_auto = QPushButton(self)
+        btn_auto.setText('auto')
+        btn_auto.move(30+200,self.opt.IMGSIZE[1]+60)
+        btn_auto.clicked.connect(self.func_auto)
+        btn_auto.setToolTip('Label image sequence automatically')
+
         btn_load = QPushButton(self)
         btn_load.setText('load')
-        btn_load.move(30,opt.IMGSIZE[1]+20)
+        btn_load.move(30,self.opt.IMGSIZE[1]+20)
         btn_load.clicked.connect(self.func_load)
         btn_load.setToolTip('Load a directory which contains images')
 
         btn_prev = QPushButton(self)
         btn_prev.setText('prev')
-        btn_prev.move(30+200,opt.IMGSIZE[1]+20)
+        btn_prev.move(30+200,self.opt.IMGSIZE[1]+20)
         btn_prev.clicked.connect(self.func_prev)
         btn_prev.setToolTip('Show previous image')
 
         btn_next = QPushButton(self)
         btn_next.setText('next')
-        btn_next.move(30+200*2,opt.IMGSIZE[1]+20)
+        btn_next.move(30+200*2,self.opt.IMGSIZE[1]+20)
         btn_next.clicked.connect(self.func_next)
         btn_next.setToolTip('Show next image')
 
         btn_remv = QPushButton(self)
         btn_remv.setText('remv')
-        btn_remv.move(30+200*3,opt.IMGSIZE[1]+20)
+        btn_remv.move(30+200*3,self.opt.IMGSIZE[1]+20)
         btn_remv.clicked.connect(self.func_remv)
         btn_remv.setToolTip('Remove the last box of the box list')
 
         btn_save = QPushButton(self)
         btn_save.setText('save')
-        btn_save.move(30+200*4,opt.IMGSIZE[1]+20)
+        btn_save.move(30+200*4,self.opt.IMGSIZE[1]+20)
         btn_save.clicked.connect(self.func_save)
         btn_save.setToolTip('Save the label in a txt file')
 
         l_cls = QLabel(self)
         l_cls.setText('class id:')
-        l_cls.move(-50+200*4,opt.IMGSIZE[1]+62)
+        l_cls.move(-50+200*4,self.opt.IMGSIZE[1]+62)
 
         self.edit_cls = QComboBox(self)
-        self.edit_cls.addItems([str(i) for i in range(opt.CN)])
-        self.edit_cls.setGeometry(31+200*4,opt.IMGSIZE[1]+60, 91,20)
+        self.edit_cls.addItems([str(i) for i in range(self.opt.CN)])
+        self.edit_cls.setGeometry(31+200*4,self.opt.IMGSIZE[1]+60, 91,20)
         
         l_mode = QLabel(self)
         l_mode.setText('mode:')
-        l_mode.move(30+200*5,opt.IMGSIZE[1]+25)
+        l_mode.move(30+200*5,self.opt.IMGSIZE[1]+25)
 
         self.btn_mode_ist = QRadioButton('insert', self)
         self.btn_mode_ist.setChecked(True)
-        self.btn_mode_ist.move(30+200*5+50,opt.IMGSIZE[1]+25)
+        self.btn_mode_ist.move(30+200*5+50,self.opt.IMGSIZE[1]+25)
         self.btn_mode_ist.setToolTip('Click and drag mouse to draw boxes')
 
         self.btn_mode_del = QRadioButton('delete', self)
-        self.btn_mode_del.move(30+200*5+50,opt.IMGSIZE[1]+50)
+        self.btn_mode_del.move(30+200*5+50,self.opt.IMGSIZE[1]+50)
         self.btn_mode_del.setToolTip('Click mouse to delete boxes')
         
         self.btn_mode_chg = QRadioButton('change', self)
-        self.btn_mode_chg.move(30+200*5+50,opt.IMGSIZE[1]+75)
+        self.btn_mode_chg.move(30+200*5+50,self.opt.IMGSIZE[1]+75)
         self.btn_mode_chg.setToolTip('Click mouse to change label with selected class id')
         
         pm = QPixmap()
@@ -228,7 +195,7 @@ class Eiuyc_Label_Tool(QWidget):
         icon = QIcon()
         icon.addPixmap(pm, QIcon.Normal, QIcon.Off)
         self.setWindowIcon(icon)
-        self.setGeometry(100, 100, opt.IMGSIZE[0]+500, opt.IMGSIZE[1]+100)
+        self.setGeometry(100, 100, self.opt.IMGSIZE[0]+500, self.opt.IMGSIZE[1]+100)
         self.setWindowTitle('Label tool')
         self.grabKeyboard()  # declare manually in multiple widgets case to listening non-functional keys
         self.show()
@@ -269,47 +236,61 @@ class Eiuyc_Label_Tool(QWidget):
         lb_save_dir = img_save_dir.replace('images', 'labels')
         os.makedirs(img_save_dir, exist_ok=True)
         os.makedirs(lb_save_dir, exist_ok=True)
-        self.p = MyProcess(vpath, img_save_dir, lb_save_dir, filename, total)
+        self.p = CvtProcess(vpath, img_save_dir, lb_save_dir, filename, total)
+        self.p.signal.connect(self.log_process)
+        self.p.start()
+
+    def func_auto(self):
+        img_dir = QFileDialog.getExistingDirectory(self, 'choose a directory', '')
+        img_dir = Path(img_dir)
+        print(img_dir)
+        files = []
+        if img_dir.exists():
+            img_list = list(img_dir.glob('*.jpg'))
+        self.log(f'Labelling {len(img_list)} images.')
+        lb_save_dir = Path(str(img_dir).replace('images', 'labels'))
+        lb_save_dir.mkdir(parents=True, exist_ok=True)
+        self.p = AutoProcess(lb_save_dir, img_list)
         self.p.signal.connect(self.log_process)
         self.p.start()
 
     def func_load(self):
-        opt.IMG_DIR = QFileDialog.getExistingDirectory(self, 'choose a directory', '')
-        print(opt.IMG_DIR)
+        self.opt.IMG_DIR = QFileDialog.getExistingDirectory(self, 'choose a directory', '')
+        print(self.opt.IMG_DIR)
         files = []
-        if os.path.exists(opt.IMG_DIR):
-            files = os.listdir(opt.IMG_DIR)
+        if os.path.exists(self.opt.IMG_DIR):
+            files = os.listdir(self.opt.IMG_DIR)
 
-        opt.IMG_LIST = [i for i in files if i.split('.')[-1] in ['jpg', 'png']]
-        if len(opt.IMG_LIST) < 5:
-            msg = ', '.join(opt.IMG_LIST)
+        self.opt.IMG_LIST = [i for i in files if i.split('.')[-1] in ['jpg', 'png']]
+        if len(self.opt.IMG_LIST) < 5:
+            msg = ', '.join(self.opt.IMG_LIST)
         else:
-            msg = f'{opt.IMG_LIST[0]}, {opt.IMG_LIST[1]}, ..., {opt.IMG_LIST[-1]}'
-        if not len(opt.IMG_LIST):
+            msg = f'{self.opt.IMG_LIST[0]}, {self.opt.IMG_LIST[1]}, ..., {self.opt.IMG_LIST[-1]}'
+        if not len(self.opt.IMG_LIST):
             self.log('No availabel images.')
             return
-        self.log(f'found {len(opt.IMG_LIST)} images:')
+        self.log(f'found {len(self.opt.IMG_LIST)} images:')
         self.log('[' + msg + ']')
-        opt.LABEL_DIR = opt.IMG_DIR.replace('images', 'labels')
-        if not os.path.exists(opt.LABEL_DIR):
-            os.mkdir(opt.LABEL_DIR)
-        opt.CUR_INDEX = 0
+        self.opt.LABEL_DIR = self.opt.IMG_DIR.replace('images', 'labels')
+        if not os.path.exists(self.opt.LABEL_DIR):
+            os.mkdir(self.opt.LABEL_DIR)
+        self.opt.CUR_INDEX = 0
         self.show_img()
 
     def func_prev(self):
-        opt.CUR_INDEX -= 1
+        self.opt.CUR_INDEX -= 1
         if not self.check_index(): return
         self.show_img()
 
     def func_next(self):
-        opt.CUR_INDEX += 1
+        self.opt.CUR_INDEX += 1
         if not self.check_index(): return
         self.show_img()
 
     def show_img(self):
         image_path = self.get_image_path()
         self.log('Current image path is:\n'+ image_path)
-        img = QPixmap(image_path).scaled(*opt.IMGSIZE)
+        img = QPixmap(image_path).scaled(*self.opt.IMGSIZE)
         self.l_pic.setPixmap(img)
         self.initial_label()
 
@@ -320,7 +301,7 @@ class Eiuyc_Label_Tool(QWidget):
         label_path = self.get_label_path()
         image_path = self.get_image_path()
         with open(label_path, 'w') as f:
-            f.writelines(map(lambda x: ('%d'+' %f'*4) % tuple(Utils.cxyxy2cxywh(x)) +'\n', self.l_pic.labels))
+            f.writelines(map(lambda x: ('%d'+' %f'*4) % tuple(self.utils.cxyxy2cxywh(x)) +'\n', self.l_pic.labels))
         self.log(f'Label saved to {label_path}.')
 
     def func_remv(self):
@@ -333,16 +314,16 @@ class Eiuyc_Label_Tool(QWidget):
         self.log('Nothing to do.')
 
     def check_index(self):
-        if not opt.IMG_LIST:
+        if not self.opt.IMG_LIST:
             self.log('No availabel image.')
-            opt.CUR_INDEX = 0
+            self.opt.CUR_INDEX = 0
             return False
-        if opt.CUR_INDEX < 0:
-            opt.CUR_INDEX = 0
+        if self.opt.CUR_INDEX < 0:
+            self.opt.CUR_INDEX = 0
             self.log('This is the first one.')
             return False
-        if opt.CUR_INDEX >= len(opt.IMG_LIST):
-            opt.CUR_INDEX = len(opt.IMG_LIST) - 1
+        if self.opt.CUR_INDEX >= len(self.opt.IMG_LIST):
+            self.opt.CUR_INDEX = len(self.opt.IMG_LIST) - 1
             self.log('This is the last one.')
             return False
         return True
@@ -353,21 +334,21 @@ class Eiuyc_Label_Tool(QWidget):
         if os.path.exists(label_path):
             with open(label_path, 'r') as f:
                 lines = [line.strip().split() for line in f.readlines() if len(line.strip().split()) == 5]
-                self.l_pic.labels = list(map(lambda x: Utils.cxywh2cxyxy([int(x[0]),]+list(map(float,x[1:]))), lines))
+                self.l_pic.labels = list(map(lambda x: self.utils.cxywh2cxyxy([int(x[0]),]+list(map(float,x[1:]))), lines))
             self.log(f'Load label from:\n{label_path}.')
         else:
             self.l_pic.labels = []
         self.log_length()
 
     def get_label_path(self):
-        img_name = opt.IMG_LIST[opt.CUR_INDEX]
+        img_name = self.opt.IMG_LIST[self.opt.CUR_INDEX]
         label_name = '.'.join(img_name.split('.')[:-1]) + '.txt'
-        label_path = f'{opt.LABEL_DIR}/{label_name}'
+        label_path = f'{self.opt.LABEL_DIR}/{label_name}'
         return label_path
 
     def get_image_path(self):
-        image_name = opt.IMG_LIST[opt.CUR_INDEX]
-        image_path = f'{opt.IMG_DIR}/{image_name}'
+        image_name = self.opt.IMG_LIST[self.opt.CUR_INDEX]
+        image_path = f'{self.opt.IMG_DIR}/{image_name}'
         return image_path
 
     def find_boxes(self, x, y):
@@ -419,7 +400,6 @@ class Eiuyc_Label_Tool(QWidget):
             self.func_next()
 
 if __name__ == '__main__':
-    opt = Tool_Opt()
     app = QApplication(sys.argv)
     tool = Eiuyc_Label_Tool()
     sys.exit(app.exec_())

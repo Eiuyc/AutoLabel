@@ -12,7 +12,7 @@ class Detect_Opt():
         self.iou_thres = 0.45
         self.weight_path = 'weights/yolov5s_1c.pt'
         self.img_size = 640
-        self.classifier_path = './weights/CNN.pt'
+        self.classifier_path = './weights/cnn_sd.pt'
 
 class App():
     def __init__(self):
@@ -59,7 +59,7 @@ class App():
             head = Image.fromarray(img0[y0:y1, x0:x1])
             head = self.transform(head)
             heads.append(head)
-        pred = self.classfier(torch.stack(heads))
+        pred = self.classifier(torch.stack(heads))
         return torch.max(pred,1)[1]
 
     
@@ -81,9 +81,9 @@ class App():
             if not len(det): return
             det[:,:4] = scale_coords(img.shape[2:], det[:,:4], img0.shape).round()
             
-            # boxes = det[:,:4]
-            # classes = self.cut_and_pred(img0, boxes)
-            # det[:, -1] = classes
+            boxes = det[:,:4]
+            classes = self.cut_and_pred(img0, boxes)
+            det[:, -1] = classes
 
             with open(txtpath, 'w') as f:
                 f.writelines(map(self.change, det))

@@ -1,38 +1,45 @@
-import cv2, os, torch, numpy as np
+import cv2, sys, torch, numpy as np
 from models.experimental import attempt_load
 from utils.datasets import LoadStreams, LoadImages, letterbox
 from utils.general import check_img_size, non_max_suppression, scale_coords, xyxy2xywh
-from classifier import Net
 from torchvision import transforms
 from PIL import Image
+from pathlib import Path
+
+from classifier import Net
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[0] / 'models'))
+from fine_tune_model import denseNet201_model
 
 class Detect_Opt():
-    def __init__(self):
+    def __init__(self, mode):
+        self.mode = mode
         self.conf_thres = 0.25
         self.iou_thres = 0.45
-        self.weight_path = 'weights/yolov5s_1c.pt'
         self.img_size = 640
-        self.classifier_path = './weights/cnn_sd.pt'
+        self.weight_dir = Path('./weights')
+
+        self.detector_name = 'yolov5s_1c.pt'
+        self.classifier_name = 'cnn_sd.pt'
+
+        if mode == 'half':
+            self.detector_name = 'yolov5s_half.pt'
+            self.classifier_name = 'denseNet201.pth.tar'
+
+        self.weight_path = self.weight_dir / self.detector_name
+        self.classifier_path = self.weight_dir / self.classifier_name
 
 class App():
-    def __init__(self):
-        opt = Detect_Opt()
-        # device = 'cpu' or '0' or '0,1,2,3'
-        device = 'cpu'
+    def __init__(self, mode):
+        opt = Detect_Opt(mode)
+        self.mode = mode
 
-        os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-        cpu = device == 'cpu'
-        if not cpu:
-            os.environ['CUDA_VISIBLE_DEVICES'] = device
-            assert torch.cuda.is_available(), f'CUDA unavailable, invalid device {device} requested'
-
-        cuda = not cpu and torch.cuda.is_available()
-        device = torch.device('cuda:0' if cuda else 'cpu')
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         self.half = device.type != 'cpu'
         self.device = device
         print('device:', device)
 
-        model = attempt_load(opt.weight_path, map_location=device)
+        model = attempt_load(opt.weight_path.as_posix(), map_location=device)
         self.imgsz = check_img_size(opt.img_size, s=model.stride.max())
         if self.half:
             model.half()  # to FP16
@@ -44,13 +51,17 @@ class App():
             transforms.ToTensor(),
             transforms.Normalize(mean=[.5], std=[.5])
         ])
-        self.classifier = Net()
-        self.classifier.load_state_dict(
-            torch.load(opt.classifier_path, map_location=torch.device('cpu'))
-        )
-        # self.classifier = self.classifier.cpu()
+        if self.mode == 'head':
+            self.classifier = Net()
+            map_location = torch.device('cpu')
+        else:
+            self.classifier, _ = denseNet161_model()
+            map_location = lambda storage, loc: storage
+        self.classifier.load_state_dict(torch.load(
+            opt.classifier_path.as_posix(),
+            map_location=map_location
+        ))
         self.classifier.eval()
-        # self.classifier.cuda()
     
     def cut_and_pred(self, img0, boxes):
         heads = []
@@ -97,29 +108,9 @@ class App():
 
 
 if __name__ == "__main__":
-    app = App()
-    img = cv2.imread('images/test.jpg')
-    pred = app.detect_img(img, 'test__.txt')
+    app = App('half')
+    img = cv2.imread('images/class1/a.jpg')
+    pred = app.detect_img(img, 'a.txt')
     print(len(pred))
     print(pred)
     
-
-
-# video_path = './videos/exam.mkv'
-# video_name = video_path.split('/')[-1].split('.')[0]
-# img_dir = './images/'+ video_name
-
-# if not os.path.exists(img_dir):
-#     os.mkdir(img_dir)
-
-# cap = cv2.VideoCapture(video_path)
-# i = 0
-# while 1:
-#     _, frame = cap.read()
-#     i+=1
-#     if i%30 == 0:
-#         cv2.imwrite(f'{img_dir}/{video_name}_{i:05}.jpg', frame)
-#     # cv2.imwrite(f'{img_dir}/{video_name}_{i:05}.jpg', frame)
-
-
-

@@ -1,39 +1,13 @@
-import os, sys, cv2
+import os, sys, cv2, base64, argparse
+from pathlib import Path
+
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QComboBox
 from PyQt5.QtWidgets import QFileDialog, QLabel, QTextBrowser, QRadioButton
 from PyQt5.QtGui import QPainter, QPen, QColor, QFont, QIcon
 from PyQt5.QtGui import QTextCursor, QPixmap
 from PyQt5.QtCore import QRect, Qt
 
-import base64
-from pathlib import Path
-from Modules import Tool_Opt, CvtProcess, AutoProcess
-
-class Utils():
-    def __init__(self, IMGSIZE):
-        self.size = IMGSIZE
-
-    def cxyxy2cxywh(self, cxyxy, size=None):
-        if not size: size = self.size
-        c = cxyxy[0]
-        w = cxyxy[3] - cxyxy[1]
-        h = cxyxy[4] - cxyxy[2]
-        x = cxyxy[1] + w/2
-        y = cxyxy[2] + h/2
-        cxywh = [c, x/size[0], y/size[1], w/size[0], h/size[1]]
-        return cxywh
-
-    def cxywh2cxyxy(self, cxywh, size=None):
-        if not size: size = self.size
-        c, x, y, w, h = cxywh
-        x *= size[0]; w *= size[0]
-        y *= size[1]; h *= size[1]
-        x0 = x - w/2
-        y0 = y - h/2
-        x1 = x + w/2
-        y1 = y + h/2
-        cxyxy = [c, x0, y0, x1, y1]
-        return cxyxy
+from Modules import Tool_Opt, Utils, CvtProcess, AutoProcess, CutProcess
 
 class MyLabel(QLabel):
     def __init__(self, p, window):
@@ -46,7 +20,16 @@ class MyLabel(QLabel):
         self.x1 = 0
         self.y1 = 0
         self.window = window
-        self.colors = [Qt.red, Qt.green, Qt.blue, Qt.yellow]
+        # self.colors = [Qt.red, Qt.green, Qt.blue, Qt.yellow]
+        self.colors = [
+            QColor(255, 0, 0),
+            QColor(0, 255, 0),
+            QColor(0, 0, 255),
+            QColor(255, 255, 0),
+            QColor(255, 0, 255),
+            QColor(0, 255, 255),
+            QColor(255, 255, 255),
+        ]
         # self.boarder = 0.6
         self.boarder = 1
         self.linestyle = Qt.SolidLine
@@ -108,8 +91,9 @@ class MyLabel(QLabel):
             painter.drawText(rect, Qt.AlignCenter, current_c)
 
 class Eiuyc_Label_Tool(QWidget):
-    def __init__(self):
+    def __init__(self, mode):
         super().__init__()
+        self.mode = mode
         self.opt = Tool_Opt()
         self.utils = Utils(self.opt.IMGSIZE)
         self.view_state = True
@@ -135,6 +119,12 @@ class Eiuyc_Label_Tool(QWidget):
         btn_auto.clicked.connect(self.func_auto)
         btn_auto.setToolTip('Label image sequence automatically')
 
+        btn_cuts = QPushButton(self)
+        btn_cuts.setText('cuts')
+        btn_cuts.move(30+200*2,self.opt.IMGSIZE[1]+60)
+        btn_cuts.clicked.connect(self.func_cuts)
+        btn_cuts.setToolTip('Cut objects automatically')
+
         btn_load = QPushButton(self)
         btn_load.setText('load')
         btn_load.move(30,self.opt.IMGSIZE[1]+20)
@@ -142,13 +132,13 @@ class Eiuyc_Label_Tool(QWidget):
         btn_load.setToolTip('Load a directory which contains images')
 
         btn_prev = QPushButton(self)
-        btn_prev.setText('prev')
+        btn_prev.setText('<---')
         btn_prev.move(30+200,self.opt.IMGSIZE[1]+20)
         btn_prev.clicked.connect(self.func_prev)
         btn_prev.setToolTip('Show previous image')
 
         btn_next = QPushButton(self)
-        btn_next.setText('next')
+        btn_next.setText('--->')
         btn_next.move(30+200*2,self.opt.IMGSIZE[1]+20)
         btn_next.clicked.connect(self.func_next)
         btn_next.setToolTip('Show next image')
@@ -236,7 +226,7 @@ class Eiuyc_Label_Tool(QWidget):
         lb_save_dir = img_save_dir.replace('images', 'labels')
         os.makedirs(img_save_dir, exist_ok=True)
         os.makedirs(lb_save_dir, exist_ok=True)
-        self.p = CvtProcess(vpath, img_save_dir, lb_save_dir, filename, total)
+        self.p = CvtProcess(vpath, img_save_dir, lb_save_dir, filename, total, self.mode)
         self.p.signal.connect(self.log_process)
         self.p.start()
 
@@ -250,7 +240,17 @@ class Eiuyc_Label_Tool(QWidget):
         self.log(f'Labelling {len(img_list)} images.')
         lb_save_dir = Path(str(img_dir).replace('images', 'labels'))
         lb_save_dir.mkdir(parents=True, exist_ok=True)
-        self.p = AutoProcess(lb_save_dir, img_list)
+        self.p = AutoProcess(lb_save_dir, img_list, self.mode)
+        self.p.signal.connect(self.log_process)
+        self.p.start()
+        
+    def func_cuts(self):
+        image_path = Path(self.get_image_path())
+        lbs = self.l_pic.labels
+        self.log(f'Cutting {len(lbs)} objects.')
+        obj_save_dir = Path(str(image_path).replace('images', 'cuts').replace('.jpg', ''))
+        obj_save_dir.mkdir(parents=True, exist_ok=True)
+        self.p = CutProcess(obj_save_dir, image_path, lbs)
         self.p.signal.connect(self.log_process)
         self.p.start()
 
@@ -400,6 +400,15 @@ class Eiuyc_Label_Tool(QWidget):
             self.func_next()
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='AutoLabel tool for yolov5')
+    parser.add_argument(
+        '-m', '--mode', type=str,
+        help='set tool mode, either head or half',
+        choices=['head', 'half'],
+        default='head'
+    )
+    args = parser.parse_args()
+    mode = args.mode
     app = QApplication(sys.argv)
-    tool = Eiuyc_Label_Tool()
+    tool = Eiuyc_Label_Tool(mode)
     sys.exit(app.exec_())

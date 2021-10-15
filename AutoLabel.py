@@ -237,7 +237,7 @@ class Eiuyc_Label_Tool(QWidget):
         files = []
         if img_dir.exists():
             img_list = list(img_dir.glob('*.jpg'))
-        self.log(f'Labelling {len(img_list)} images.')
+        self.log(f'Labelling {len(img_list)} images...')
         lb_save_dir = Path(str(img_dir).replace('images', 'labels'))
         lb_save_dir.mkdir(parents=True, exist_ok=True)
         self.p = AutoProcess(lb_save_dir, img_list, self.mode)

@@ -53,6 +53,16 @@ def denseNet161_model():
         model_ft = model_ft.cuda()
     return model_ft,model_name
 
+def denseNet201_model():
+    model_ft = models.densenet201(pretrained=True)
+    num_ftrs = model_ft.classifier.in_features
+    # fine tune we change original fc layer into classes num of our own
+    model_ft.classifier = nn.Linear(num_ftrs, 6)
+    model_name="denseNet201"
+    if USE_GPU:
+        model_ft = model_ft.cuda()
+    return model_ft,model_name
+
 def squeezenet1_1_model():
     model_ft = models.squeezenet1_1(pretrained=True)
     # num_features = model_ft.fc.in_features

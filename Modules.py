@@ -42,12 +42,14 @@ class AutoProcess(QThread):
         self.lb_save_dir = lb_save_dir
         self.img_list = img_list
         self.total = len(img_list)
-        self.detector = App(self.mode)
+        self.detector = None
 
     def __del__(self):
         self.wait()
 
     def run(self):
+        if self.detector is None:
+            self.detector = App(self.mode)
         for i, img_path in enumerate(self.img_list):
             img = imread(img_path.as_posix())
             self.signal.emit(f'processing: {i+1}/{self.total}')

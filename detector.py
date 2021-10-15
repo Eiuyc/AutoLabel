@@ -30,7 +30,7 @@ class Detect_Opt():
         self.classifier_path = self.weight_dir / self.classifier_name
 
 class App():
-    def __init__(self, mode):
+    def __init__(self, mode='head'):
         opt = Detect_Opt(mode)
         self.mode = mode
 
@@ -46,16 +46,24 @@ class App():
         self.model = model
         self.opt = opt
 
-        self.transform = transforms.Compose([
-            transforms.Resize((32,32)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[.5], std=[.5])
-        ])
         if self.mode == 'head':
+            self.transform = transforms.Compose([
+                transforms.Resize((32,32)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[.5], std=[.5])
+            ])
             self.classifier = Net()
             map_location = torch.device('cpu')
         else:
-            self.classifier, _ = denseNet161_model()
+            self.transform = transforms.Compose([
+                transforms.Resize([244, 244]),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    [0.485, 0.456, 0.406],
+                    [0.229, 0.224, 0.225]
+                )
+            ])
+            self.classifier, _ = denseNet201_model()
             map_location = lambda storage, loc: storage
         self.classifier.load_state_dict(torch.load(
             opt.classifier_path.as_posix(),
@@ -64,16 +72,15 @@ class App():
         self.classifier.eval()
     
     def cut_and_pred(self, img0, boxes):
-        heads = []
+        cuts = []
         for xyxy in boxes:
             x0, y0, x1, y1 = map(int, xyxy)
-            head = Image.fromarray(img0[y0:y1, x0:x1])
-            head = self.transform(head)
-            heads.append(head)
-        pred = self.classifier(torch.stack(heads))
+            cut = Image.fromarray(img0[y0:y1, x0:x1])
+            cut = self.transform(cut)
+            cuts.append(cut)
+        pred = self.classifier(torch.stack(cuts))
         return torch.max(pred,1)[1]
 
-    
     def detect_img(self, img0, txtpath=None):
         img = letterbox(img0, new_shape=self.imgsz)[0]
         img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
@@ -87,18 +94,18 @@ class App():
         pred = self.model(img)[0]
         pred = non_max_suppression(pred, self.opt.conf_thres, self.opt.iou_thres, agnostic=True)
         self.gn = torch.tensor(img0.shape)[[1, 0, 1, 0]]
-        if txtpath:
-            det = pred[0]
-            if not len(det): return
-            det[:,:4] = scale_coords(img.shape[2:], det[:,:4], img0.shape).round()
-            
-            boxes = det[:,:4]
-            classes = self.cut_and_pred(img0, boxes)
-            det[:, -1] = classes
 
+        det = pred[0]
+        if not len(det): return
+        det[:,:4] = scale_coords(img.shape[2:], det[:,:4], img0.shape).round()
+        
+        boxes = det[:,:4]
+        det[:, -1] = self.cut_and_pred(img0, boxes)
+        pred[0] = det
+
+        if txtpath:
             with open(txtpath, 'w') as f:
                 f.writelines(map(self.change, det))
-            pred[0] = det
         return pred
     
     def change(self, record):
@@ -110,7 +117,6 @@ class App():
 if __name__ == "__main__":
     app = App('half')
     img = cv2.imread('images/class1/a.jpg')
-    pred = app.detect_img(img, 'a.txt')
-    print(len(pred))
+    pred = app.detect_img(img)
     print(pred)
     

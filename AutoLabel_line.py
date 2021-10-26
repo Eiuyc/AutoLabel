@@ -411,12 +411,8 @@ class Eiuyc_Label_Tool(QWidget):
         elif e.key() == Qt.Key_V:
             self.view_state = not self.view_state
             self.update()
-        elif e.key() == Qt.Key_0:
-            self.edit_cls.setCurrentIndex(0)
-        elif e.key() == Qt.Key_1:
-            self.edit_cls.setCurrentIndex(1)
-        elif e.key() == Qt.Key_2:
-            self.edit_cls.setCurrentIndex(2)
+        elif e.key() in [Qt.Key_0, Qt.Key_1, Qt.Key_2, Qt.Key_3]:
+            self.edit_cls.setCurrentIndex(e.key()-Qt.Key_0)
         elif e.key() == Qt.Key_Left:
             self.func_prev()
         elif e.key() == Qt.Key_Right:

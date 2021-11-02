@@ -79,7 +79,7 @@ class MyLabel(QLabel):
         painter = QPainter(self)
         painter.setFont(QFont('Decorative', 10))
         for c, x0, y0, x1, y1 in self.labels:
-            rect = QRect(x0, y0, x1 - x0, y1 - y0)
+            rect = QRect(int(x0), int(y0), int(x1 - x0), int(y1 - y0))
             painter.setPen(QPen(self.get_rect_color(c), self.boarder, self.linestyle))
             painter.drawRect(rect)
             painter.drawText(rect, Qt.AlignCenter, str(c))
@@ -189,7 +189,6 @@ class Eiuyc_Label_Tool(QWidget):
 
     def func_load(self):
         self.opt.LB_DIR = Path(QFileDialog.getExistingDirectory(self, 'choose a directory', ''))
-        print('LB_DIR:', self.opt.LB_DIR)
         files = []
         if self.opt.LB_DIR.exists():
             files = list(self.opt.LB_DIR.glob('*.txt'))

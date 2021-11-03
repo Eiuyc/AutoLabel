@@ -2,6 +2,7 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from pathlib import Path
 from detector import App
 from cv2 import VideoCapture, imread, imwrite
+from PyQt5.QtCore import Qt
 
 class CvtProcess(QThread):
     signal = pyqtSignal(str)
@@ -107,6 +108,18 @@ class Tool_Opt():
         self.IMG_LIST = []
         self.CUR_INDEX = 0
         self.CN = 7
+        self.l_pic_bgc = (200, 200, 200)
+        self.l_console_bgc = (180, 180, 180)
+
+class Review_Opt():
+    def __init__(self):
+        self.IMGSIZE = (int(1920 *0.7), int(1080 *0.7))
+        self.LB_DIR = None
+        self.IMG_DIR = Path('./images')
+        self.IMG_LIST = []
+        self.CUR_INDEX = 0
+        self.CN = 7
+        self.NUM_keys = [Qt.Key_0, Qt.Key_1, Qt.Key_2, Qt.Key_3, Qt.Key_4, Qt.Key_5, Qt.Key_6]
         self.l_pic_bgc = (200, 200, 200)
         self.l_console_bgc = (180, 180, 180)
 

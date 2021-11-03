@@ -86,7 +86,7 @@ class MyLabel(QLabel):
         current_c = self.window.edit_cls.currentText()
         painter.setPen(QPen(self.get_rect_color(current_c), self.boarder, self.linestyle))
         if self.press and self.window.btn_mode_ist.isChecked():
-            rect = QRect(self.x0, self.y0, self.x1 - self.x0, self.y1 - self.y0)
+            rect = QRect(int(self.x0), int(self.y0), int(self.x1 - self.x0), int(self.y1 - self.y0))
             painter.drawRect(rect)
             painter.drawText(rect, Qt.AlignCenter, current_c)
 
@@ -195,10 +195,10 @@ class Eiuyc_Label_Tool(QWidget):
 
         self.opt.LB_LIST = files
         if not len(self.opt.LB_LIST):
-            self.log('No availabel images.')
+            self.log('No availabel labels.')
             return
         if len(self.opt.LB_LIST) < 5:
-            msg = ', '.join(self.opt.LB_LIST)
+            msg = ', '.join(map(str, self.opt.LB_LIST))
         else:
             msg = f'{self.opt.LB_LIST[0]}, {self.opt.LB_LIST[1]}, ..., {self.opt.LB_LIST[-1]}'
         self.log(f'found {len(self.opt.LB_LIST)} labels:')
@@ -218,7 +218,11 @@ class Eiuyc_Label_Tool(QWidget):
         self.show_img()
 
     def show_img(self):
-        image_path = self.get_image_path().as_posix()
+        image_path = self.get_image_path()
+        if not image_path.exists():
+            self.log('No availabel images.')
+            return
+        image_path = image_path.as_posix()
         self.log('Current image path is:\n'+ image_path)
         img = QPixmap(image_path).scaled(*self.opt.IMGSIZE)
         self.l_pic.setPixmap(img)
